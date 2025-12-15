@@ -1,0 +1,15 @@
+# Python cache
+__pycache__/
+*.pyc
+
+# Uploaded / generated files
+uploads/
+outputs/
+
+# Generated documents
+*.pdf
+*.xlsx
+
+# OS files
+.DS_Store
+Thumbs.db
