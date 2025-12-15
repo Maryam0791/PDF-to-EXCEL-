@@ -12,3 +12,10 @@ A FastAPI-based application that converts SOFT PDF files into structured Excel s
 ```bash
 pip install -r requirements.txt
 
+## Download (Windows)
+
+Go to Releases and download **run_app.exe**
+
+Then double-click to use.
+
+
