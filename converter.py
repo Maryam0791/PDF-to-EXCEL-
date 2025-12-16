@@ -1,70 +1,95 @@
 import pdfplumber
 import pandas as pd
 import re
-from io import BytesIO
+import os
 
 
-PRODUCT_CODE_REGEX = r"(HW|SW)\d{8}"
-DATE_RANGE_REGEX = r"from\s+(.*?)\s+to\s+(.*?)\s*\("
-REGION_REGEX = r"(WESTERN|EASTERN|CENTRAL)\s+REGION"
-QTY_REGEX = r"\((\d+)\s+Store"
-
-
-def convert_pdf_to_dataframe(pdf_bytes):
+def pdf_to_excel(pdf_path, excel_path):
     rows = []
-    current_row = None
+    s_no = 1
 
-    with pdfplumber.open(BytesIO(pdf_bytes)) as pdf:
+    with pdfplumber.open(pdf_path) as pdf:
         for page in pdf.pages:
             text = page.extract_text()
             if not text:
                 continue
 
-            for line in text.split("\n"):
-                line = line.strip()
+            lines = text.split("\n")
+            i = 0
 
-                # Skip headers / footers
-                if line.startswith(("Sr", "Order", "VAT", "Thursday", "Wednesday", "FAMA")):
-                    continue
+            while i < len(lines):
+                line = lines[i].strip()
 
-                # PRODUCT LINE
-                code_match = re.search(PRODUCT_CODE_REGEX, line)
-                if code_match:
-                    current_row = {
-                        "S.No": len(rows) + 1,
-                        "Product Code": code_match.group(),
-                        "Description": re.sub(PRODUCT_CODE_REGEX, "", line).strip(),
-                        "Region": "",
-                        "Start Date": "",
-                        "End Date": "",
-                        "Quantity": ""
-                    }
+                # -------------------------------
+                # PRODUCT LINE (HW or SW)
+                # -------------------------------
+                product_match = re.match(
+                    r"\s*\d+\s*-?\s*(HW\d+|SW\d+)\s*-?\s*(.*?)\s+(\d+)\s+Unit",
+                    line
+                )
 
-                    qty_match = re.search(QTY_REGEX, line)
-                    if qty_match:
-                        current_row["Quantity"] = qty_match.group(1)
+                if product_match:
+                    product_code = product_match.group(1)
+                    description = product_match.group(2).strip()
+                    quantity = product_match.group(3)
 
-                    rows.append(current_row)
-                    continue
+                    region = ""
+                    start_date = ""
+                    end_date = ""
 
-                # REGION LINE
-                if current_row:
-                    region_match = re.search(REGION_REGEX, line)
-                    if region_match:
-                        current_row["Region"] = region_match.group(1)
-                        continue
+                    # -------------------------------
+                    # CHECK NEXT LINE → REGION
+                    # -------------------------------
+                    if i + 1 < len(lines):
+                        region_match = re.search(
+                            r"(WESTERN|EASTERN|CENTRAL)\s+REGION",
+                            lines[i + 1],
+                            re.IGNORECASE
+                        )
+                        if region_match:
+                            region = region_match.group(1).upper()
 
-                # DATE RANGE LINE
-                if current_row:
-                    date_match = re.search(DATE_RANGE_REGEX, line, re.IGNORECASE)
-                    if date_match:
-                        current_row["Start Date"] = date_match.group(1)
-                        current_row["End Date"] = date_match.group(2)
-                        continue
+                    # -------------------------------
+                    # CHECK NEXT LINE → DATE RANGE
+                    # -------------------------------
+                    if i + 2 < len(lines):
+                        date_match = re.search(
+                            r"from\s+(.*?)\s+to\s+(.*?)(\(|$)",
+                            lines[i + 2],
+                            re.IGNORECASE
+                        )
+                        if date_match:
+                            start_date = date_match.group(1).strip()
+                            end_date = date_match.group(2).strip()
 
-                # CONTINUATION OF DESCRIPTION
-                if current_row and line and not line.lower().startswith("unit"):
-                    current_row["Description"] += " " + line
+                    rows.append({
+                        "S.No": s_no,
+                        "Product Code": product_code,
+                        "Description": description,
+                        "Quantity": quantity,
+                        "Region": region,
+                        "Start Date": start_date,
+                        "End Date": end_date
+                    })
 
-    return pd.DataFrame(rows)
+                    s_no += 1
+                    i += 3
+                else:
+                    i += 1
+
+    df = pd.DataFrame(
+        rows,
+        columns=[
+            "S.No",
+            "Product Code",
+            "Description",
+            "Quantity",
+            "Region",
+            "Start Date",
+            "End Date"
+        ]
+    )
+
+    os.makedirs(os.path.dirname(excel_path), exist_ok=True)
+    df.to_excel(excel_path, index=False)
 
